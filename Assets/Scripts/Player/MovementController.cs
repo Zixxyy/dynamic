@@ -41,13 +41,12 @@ public class MovementController : MonoBehaviour
     
     // ── speed multiplier — driven by PlayerHealthSystem ──
 
-        private float _speedMultiplier = 1f;
+    private float _speedMultiplier = 1f;
  
     public void SetSpeedMultiplier(float multiplier)
     {
         _speedMultiplier = Mathf.Max(0f, multiplier);
     }
-
 
     // sensitivity calibration
 
@@ -63,6 +62,10 @@ public class MovementController : MonoBehaviour
     Vector3 _verticalVelocity;
     // slide push dir+speed baked each frame 
     Vector3 _slopeSlideVelocity;
+
+    // last ground normal — updated via OnControllerColliderHit, not raycast
+    // fires only on real contact, free unlike per-frame raycast
+    Vector3 _lastGroundNormal = Vector3.up;
 
     float _coyoteTimer;
     float _jumpBufferTimer;
@@ -96,6 +99,14 @@ public class MovementController : MonoBehaviour
         _characterController.Move((_horizontalVelocity + _verticalVelocity + _slopeSlideVelocity) * Time.deltaTime);
     }
 
+    // ─── called by CharacterController on any geometry contact ───
+    // replaces per-frame raycast — fires only when there's actual collision
+    private void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        if ((_groundMask.value & (1 << hit.gameObject.layer)) == 0) return;
+        _lastGroundNormal = hit.normal;
+    }
+
     // Camera
     private void Rotate()
     {
@@ -111,32 +122,30 @@ public class MovementController : MonoBehaviour
     // ─── floor ──── 
     private void UpdateGroundCheck()
     {
-        _isGrounded = Physics.CheckSphere(_checkGround.position, _checkRadiusSphere, _groundMask);
-
-        // reset slope state before recalc 
+        _isGrounded         = Physics.CheckSphere(_checkGround.position, _checkRadiusSphere, _groundMask);
         _isOnSteepSlope     = false;
         _slopeSlideVelocity = Vector3.zero;
 
-        if (Physics.Raycast(transform.position, Vector3.down, out RaycastHit hit, 2f, _groundMask))
+        if (_isGrounded)
         {
-            float angle = Vector3.Angle(hit.normal, Vector3.up);
+            float angle = Vector3.Angle(_lastGroundNormal, Vector3.up);
 
             if (angle > _slopeLimit)
             {
                 _isOnSteepSlope = true;
 
                 // project gravity dir onto slope surface = slide direction
-                Vector3 slideDir = Vector3.ProjectOnPlane(Vector3.down, hit.normal).normalized;
+                Vector3 slideDir = Vector3.ProjectOnPlane(Vector3.down, _lastGroundNormal).normalized;
 
                 // steeper = faster, linear remap [slopeLimit..90] -> [0..maxSpeed] dont try to understand its just a falling when you trying to jump on a angle
                 float t = (angle - _slopeLimit) / (90f - _slopeLimit);
                 _slopeSlideVelocity = slideDir * (_slopeSlideMaxSpeed * t);
             }
-            else if (angle > 0f && _isGrounded)
-            {
-                // snap to slope so CheckSphere doesn't lose contact
-                _verticalVelocity.y = -2f;
-            }
+        }
+        else
+        {
+            // reset in air so landing on flat doesn't carry stale slope data
+            _lastGroundNormal = Vector3.up;
         }
     }
 

@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  player hud
@@ -15,39 +14,43 @@ public class PlayerHud : MonoBehaviour
     [SerializeField] private PlayerHealthSystem healthSystem;
 
     [Header("hp bar")]
-    [SerializeField] private Image          hpBarFill;      // the fill image inside the frame
-    [SerializeField] private Animator       hpBarAnimator;  // animator on the frame root
-    [SerializeField] private TextMeshProUGUI hpLabel;       // optional "3 / 4" text
+    [SerializeField] private Image     hpBarFill;     // the fill image inside the frame
+    [SerializeField] private Animator  hpBarAnimator; // animator on the frame root
 
     [Header("hp bar fill colors — shifts as hp drops")]
-    [SerializeField] private Color colorFull    = new Color(0.2f, 0.9f, 0.3f);  // green color
-    [SerializeField] private Color colorMedium  = new Color(0.9f, 0.7f, 0.1f);  // yellow colour
-    [SerializeField] private Color colorLow     = new Color(0.9f, 0.2f, 0.1f);  // red colourawr
+    [SerializeField] private Color colorFull   = new Color(0.2f, 0.9f, 0.3f); // green color
+    [SerializeField] private Color colorMedium = new Color(0.9f, 0.7f, 0.1f); // yellow colour
+    [SerializeField] private Color colorLow    = new Color(0.9f, 0.2f, 0.1f); // red colourawr
 
     [Header("fill animation speed")]
-    [SerializeField] private float fillLerpSpeed = 8f;
+    [Tooltip("time in seconds to reach target fill — lower = faster")]
+    [SerializeField] private float fillLerpTime = 0.1f;
 
     [Header("flask pips — one Image per charge slot")]
-    [SerializeField] private Image[] chargePips;            // assign in inspector
+    [SerializeField] private Image[] chargePips;   // assign in inspector
     [SerializeField] private Color   pipFilled = Color.white;
     [SerializeField] private Color   pipEmpty  = new Color(1f, 1f, 1f, 0.2f);
+    [SerializeField] private Sprite pipFilledSprite; // enable
+    [SerializeField] private Sprite pipEmptySprite;  // isnt enable
+
+    
 
     [Header("flask animations")]
-    [SerializeField] private Animator flaskAnimator; // animator on FlaskRoot
-    [SerializeField] private string flaskReadyTrigger = "Ready"; // plays when flask is full
-    [SerializeField] private string flaskUsedTrigger  = "Used";  // plays when flask is consumed
+    [SerializeField] private Animator flaskAnimator;                // animator on FlaskRoot
+    [SerializeField] private string   flaskReadyTrigger = "Ready"; // plays when flask is full
+    [SerializeField] private string   flaskUsedTrigger  = "Used";  // plays when flask is consumed
 
     [Header("flask sound")]
     [SerializeField] private AudioSource audioSource;
     [SerializeField] private AudioClip   flaskReadySound;
 
-    // ── animator parameter names — 
+    // ── animator parameter names ── 
 
     [Header("animator parameters")]
     [Tooltip("int parameter: current hp value (0–4). drive your animation states from this.")]
-    [SerializeField] private string hpIntParam     = "Hp";      // int  — current hp
-    [SerializeField] private string damageTrigger  = "Damage";  // trigger
-    [SerializeField] private string healTrigger    = "Heal";    // trigger
+    [SerializeField] private string hpIntParam    = "Hp";      // int  — current hp
+    [SerializeField] private string damageTrigger = "Damage";  // trigger
+    [SerializeField] private string healTrigger   = "Heal";    // trigger
 
     // ── state ───
 
@@ -91,67 +94,66 @@ public class PlayerHud : MonoBehaviour
     {
         targetFill = (float)currentHp / maxHp;
 
-        hpBarAnimator?.SetInteger(hpIntParam, currentHp);
-        hpBarAnimator?.SetTrigger(damageTrigger);
-
-        UpdateLabel(currentHp, maxHp);
+        if (hpBarAnimator && hpBarAnimator.runtimeAnimatorController)
+        {
+            hpBarAnimator.SetInteger(hpIntParam, currentHp);
+            hpBarAnimator.SetTrigger(damageTrigger);
+        }
     }
 
     private void OnHealed(int currentHp, int maxHp)
     {
         targetFill = (float)currentHp / maxHp;
 
-        hpBarAnimator?.SetInteger(hpIntParam, currentHp);
-        hpBarAnimator?.SetTrigger(healTrigger);
-
-        UpdateLabel(currentHp, maxHp);
+        if (hpBarAnimator && hpBarAnimator.runtimeAnimatorController)
+        {
+            hpBarAnimator.SetInteger(hpIntParam, currentHp);
+            hpBarAnimator.SetTrigger(healTrigger);
+        }
     }
 
     private void OnFlaskChanged(int current, int max)
-{
-    if (chargePips == null) return;
-
-    for (int i = 0; i < chargePips.Length; i++)
     {
-        if (chargePips[i] == null) continue;
-        chargePips[i].color = i < current ? pipFilled : pipEmpty;
-    }
+        if (chargePips == null) return;
 
-    // flask just became full
-    if (current >= max)
-    {
-        flaskAnimator?.SetTrigger(flaskReadyTrigger);
-        if (audioSource && flaskReadySound)
-            audioSource.PlayOneShot(flaskReadySound);
-    }
+        for (int i = 0; i < chargePips.Length; i++)
+        {
+            if (chargePips[i] == null) continue;
+            chargePips[i].sprite = i < current ? pipFilledSprite : pipEmptySprite;
+        }
 
-    // flask was just used — all pips gone
-    if (current == 0)
-    {
-        flaskAnimator?.SetTrigger(flaskUsedTrigger);
+        if (current >= max)
+        {
+            if (flaskAnimator && flaskAnimator.runtimeAnimatorController)
+                flaskAnimator.SetTrigger(flaskReadyTrigger);
+
+            if (audioSource && flaskReadySound)
+                audioSource.PlayOneShot(flaskReadySound);
+        }
+
+        if (current == 0)
+        {
+            if (flaskAnimator && flaskAnimator.runtimeAnimatorController)
+                flaskAnimator.SetTrigger(flaskUsedTrigger);
+        }
     }
-}
 
     // ── internal ────
 
-    // smooth fill lerp every frame
+    // smooth fill lerp every frame — frame-rate independent exp
     private void AnimateFill()
     {
         if (!hpBarFill) return;
         if (Mathf.Approximately(currentFill, targetFill)) return;
 
-        currentFill = Mathf.Lerp(currentFill, targetFill, Time.deltaTime * fillLerpSpeed);
+        float t = 1f - Mathf.Exp(-Time.deltaTime / fillLerpTime);
+        currentFill = Mathf.Lerp(currentFill, targetFill, t);
         hpBarFill.fillAmount = currentFill;
 
         // shift color green → yellow → red as hp drops
         hpBarFill.color = currentFill > 0.5f
-            ? Color.Lerp(colorMedium, colorFull,   (currentFill - 0.5f) * 2f)
-            : Color.Lerp(colorLow,    colorMedium,  currentFill * 2f);
-    }
-
-    private void UpdateLabel(int currentHp, int maxHp)
-    {
-        if (hpLabel) hpLabel.text = $"{currentHp} / {maxHp}";
+            ? Color.Lerp(colorMedium, colorFull,  (currentFill - 0.5f) * 2f)
+            : Color.Lerp(colorLow,    colorMedium, currentFill * 2f);
     }
 
     // snaps everything to current health state on scene load or respawn
@@ -164,8 +166,9 @@ public class PlayerHud : MonoBehaviour
         currentFill = targetFill;
         if (hpBarFill) hpBarFill.fillAmount = currentFill;
 
-        hpBarAnimator?.SetInteger(hpIntParam, hp);
-        UpdateLabel(hp, maxHp);
+        if (hpBarAnimator && hpBarAnimator.runtimeAnimatorController)
+            hpBarAnimator.SetInteger(hpIntParam, hp);
+
         OnFlaskChanged(healthSystem.FlaskCharges, healthSystem.MaxHp);
     }
 }
