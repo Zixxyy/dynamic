@@ -7,7 +7,6 @@ using UnityEngine.Events;
 //  extend this for specific enemies — override OnHit() and OnDeath()
 //  call TakeHit() from your player attack / hitbox
 // ─────────────
-
 public class Enemy : MonoBehaviour
 {
     [Header("stats")]
