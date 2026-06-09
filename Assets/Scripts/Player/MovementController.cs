@@ -21,7 +21,6 @@ public class MovementController : MonoBehaviour
     [SerializeField] private float _speedRun = 10f;
 
     [SerializeField] private float _groundAccelTime = 0.03f;
-
     [SerializeField] private float _groundDecelTime = 0.02f;
     // in air moves controlling
     [SerializeField] private float _airControlTime = 0.4f;
@@ -38,33 +37,19 @@ public class MovementController : MonoBehaviour
     [SerializeField] private float _jumpDelay = 0.02f;
     // early release multiplier higher or shorter jumpink (i forgot that function popular hipsters name)
     [SerializeField] private float _jumpCutMultiplier = 3f;
-    
-    // ── speed multiplier — driven by PlayerHealthSystem ──
-
-    private float _speedMultiplier = 1f;
- 
-    public void SetSpeedMultiplier(float multiplier)
-    {
-        _speedMultiplier = Mathf.Max(0f, multiplier);
-    }
-
-    // sensitivity calibration
-
-    private const float SENS_SCALE = 0.07f;
 
     bool _isGrounded;
     // steep slope state
     bool _isOnSteepSlope;
     float _rotationX;
-    float _jumpDelayTimer;  
+    float _jumpDelayTimer;
 
-    Vector3 _horizontalVelocity; 
+    Vector3 _horizontalVelocity;
     Vector3 _verticalVelocity;
-    // slide push dir+speed baked each frame 
+    // slide push dir+speed baked each frame
     Vector3 _slopeSlideVelocity;
 
-    // last ground normal — updated via OnControllerColliderHit, not raycast
-    // fires only on real contact, free unlike per-frame raycast
+    // ground normal from raycast directly below player, not from collider hit
     Vector3 _lastGroundNormal = Vector3.up;
 
     float _coyoteTimer;
@@ -72,9 +57,9 @@ public class MovementController : MonoBehaviour
 
     InputAction _lookAction;
     InputAction _moveAction;
-    InputAction _sprintAction; 
+    InputAction _sprintAction;
     InputAction _jumpAction;
- 
+
     void Start()
     {
         Cursor.lockState = CursorLockMode.Locked;
@@ -82,7 +67,7 @@ public class MovementController : MonoBehaviour
 
         _lookAction   = InputSystem.actions.FindAction("Look");
         _moveAction   = InputSystem.actions.FindAction("Move");
-        _sprintAction = InputSystem.actions.FindAction("Sprint"); 
+        _sprintAction = InputSystem.actions.FindAction("Sprint");
         _jumpAction   = InputSystem.actions.FindAction("Jump");
 
         _characterController.slopeLimit = _slopeLimit;
@@ -94,23 +79,16 @@ public class MovementController : MonoBehaviour
         UpdateGroundCheck();
         UpdateTimers();
         Move();
-        ApplyGravityAndJump(); 
+        ApplyGravityAndJump();
 
         _characterController.Move((_horizontalVelocity + _verticalVelocity + _slopeSlideVelocity) * Time.deltaTime);
-    }
-
-    // ─── called by CharacterController on any geometry contact ───
-    // replaces per-frame raycast — fires only when there's actual collision
-    private void OnControllerColliderHit(ControllerColliderHit hit)
-    {
-        if ((_groundMask.value & (1 << hit.gameObject.layer)) == 0) return;
-        _lastGroundNormal = hit.normal;
     }
 
     // Camera
     private void Rotate()
     {
-        Vector2 look = _lookAction.ReadValue<Vector2>() * (_sensitivity * SENS_SCALE);
+        // multiply by 0.07 to match valorant-like sensitivity feel
+        Vector2 look = _lookAction.ReadValue<Vector2>() * (_sensitivity * 0.07f);
 
         _rotationX -= look.y;
         _rotationX = Mathf.Clamp(_rotationX, -65f, 65f);
@@ -119,7 +97,7 @@ public class MovementController : MonoBehaviour
         transform.Rotate(Vector3.up * look.x);
     }
 
-    // ─── floor ──── 
+    // floor
     private void UpdateGroundCheck()
     {
         _isGrounded         = Physics.CheckSphere(_checkGround.position, _checkRadiusSphere, _groundMask);
@@ -128,6 +106,11 @@ public class MovementController : MonoBehaviour
 
         if (_isGrounded)
         {
+            // raycast straight down to get the normal of what's actually under the player
+            // this ignores walls and side collisions unlike OnControllerColliderHit
+            if (Physics.Raycast(_checkGround.position, Vector3.down, out RaycastHit hit, _checkRadiusSphere + 0.3f, _groundMask))
+                _lastGroundNormal = hit.normal;
+
             float angle = Vector3.Angle(_lastGroundNormal, Vector3.up);
 
             if (angle > _slopeLimit)
@@ -149,7 +132,7 @@ public class MovementController : MonoBehaviour
         }
     }
 
-    // ─── timers ────
+    // timers
     private void UpdateTimers()
     {
         // Coyote time when on floor timer is filled
@@ -168,7 +151,7 @@ public class MovementController : MonoBehaviour
             _jumpDelayTimer -= Time.deltaTime;
     }
 
-    // ─── h moves ───────────────
+    // h moves
     private void Move()
     {
         // no steering on steep slope - let physics do its thing
@@ -190,9 +173,7 @@ public class MovementController : MonoBehaviour
         if (hasInput)
         {
             // backsteps only walking no running
-            targetSpeed = (!runningBack && _sprintAction.IsPressed())
-            ? _speedRun  * _speedMultiplier
-            : _speedWalk * _speedMultiplier;
+            targetSpeed = (!runningBack && _sprintAction.IsPressed()) ? _speedRun : _speedWalk;
         }
 
         Vector3 targetVelocity = wishDir * targetSpeed;
@@ -201,7 +182,7 @@ public class MovementController : MonoBehaviour
         {
             if (hasInput)
             {
-                //frame-rate independent -- exp
+                // frame-rate independent -- exp
                 float t = 1f - Mathf.Exp(-Time.deltaTime / _groundAccelTime);
                 _horizontalVelocity = Vector3.Lerp(_horizontalVelocity, targetVelocity, t);
             }
@@ -227,7 +208,7 @@ public class MovementController : MonoBehaviour
         }
     }
 
-    // ─── v moves and jump ─────
+    // v moves and jump
     private void ApplyGravityAndJump()
     {
         // reset v speed on floor
@@ -251,7 +232,7 @@ public class MovementController : MonoBehaviour
         if (!_isGrounded || _verticalVelocity.y > 0f)
             _verticalVelocity.y += _gravity * Time.deltaTime;
 
-        // early release = cut jump height 
+        // early release = cut jump height
         if (_verticalVelocity.y > 0f && !_jumpAction.IsPressed())
             _verticalVelocity.y += _gravity * (_jumpCutMultiplier - 1f) * Time.deltaTime;
 

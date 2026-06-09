@@ -1,100 +1,94 @@
 using System.Collections;
 using UnityEngine;
-using UnityEngine.Events;
 
-// ─────
-//  enemy base class
-//  extend this for specific enemies — override OnHit() and OnDeath()
-//  call TakeHit() from your player attack / hitbox
-// ─────────────
 public class Enemy : MonoBehaviour
 {
-    [Header("stats")]
-    [SerializeField] protected int   maxHp          = 3;
-    [SerializeField] protected int   damageToPlayer = 1;
-    [SerializeField] private   int   chargesPerHit  = 1;
+    [Header("Health")]
+    [SerializeField] private int maxHp = 3;
 
-    [Header("patrol")]
+    [Header("Patrol")]
     [SerializeField] private Transform[] waypoints;
     [SerializeField] private float       moveSpeed      = 2.5f;
     [SerializeField] private float       waypointRadius = 0.3f;
 
-    [Header("chase")]
-    [SerializeField] private float chaseRange    = 8f;
-    [SerializeField] private float attackRange   = 1.4f;
+    [Header("Detection")]
+    [SerializeField] private float frontViewRange  = 8f;   // how far sees in front
+    [SerializeField] private float frontViewAngle  = 90f;  // half-angle, 90 = 180 deg total cone
+    [SerializeField] private float backViewRange   = 1.5f; // how close from behind to notice
+    [SerializeField] private float loseAggroRange  = 12f;  // how far player must go to lose aggro
+
+    [Header("Attack")]
+    [SerializeField] private float attackRange    = 1.4f;
     [SerializeField] private float attackCooldown = 1.2f;
 
-    [Header("knockback")]
-    [SerializeField] private float knockbackForce    = 8f;
-    [SerializeField] private float knockbackDuration = 0.15f;
+    private int   _currentHp;
+    private bool  _isAlive    = true;
+    private bool  _isAggroed  = false;
+    private float _attackTimer = 0f;
+    private int   _waypointIndex = 0;
 
-    [Header("iframes")]
-    [SerializeField] private float iFramesDuration = 0.3f;
+    private Transform _player; // im not a good developer and this is not giving boolean (true or false) this is giving cords OR null!!!!!;
 
-    [Header("events")]
-    public UnityEvent<int, int> onHit;
-    public UnityEvent           onDeath;
-
-    public int  CurrentHp    { get; private set; }
-    public bool IsAlive      { get; private set; } = true;
-    public bool IsInvincible { get; private set; }
-
-    protected Rigidbody        rb;
-    protected Collider         col;
-    private   Transform        player;
-    private   PlayerHealthSystem playerHealth;
-
-    private enum State { Patrol, Chase, Attack }
-    private State  _state         = State.Patrol;
-    private int    _waypointIndex = 0;
-    private float  _attackTimer   = 0f;
-
-    // ── lifecycle ─────
-
-    protected virtual void Awake()
+    void Start()
     {
-        CurrentHp = maxHp;
-        rb        = GetComponent<Rigidbody>();
-        col       = GetComponent<Collider>();
+        _currentHp = maxHp;
+
+        var playerObject = GameObject.FindGameObjectWithTag("Player");
+        if (playerObject != null)
+            _player = playerObject.transform;
     }
 
-    private void Start()
+    void Update()
     {
-        var go = GameObject.FindGameObjectWithTag("Player");
-        if (go)
-        {
-            player       = go.transform;
-            playerHealth = go.GetComponent<PlayerHealthSystem>();
-        }
-    }
-
-    private void Update()
-    {
-        if (!IsAlive) return;
+        if (!_isAlive) return;
 
         _attackTimer -= Time.deltaTime;
 
-        float distToPlayer = player ? Vector3.Distance(transform.position, player.position) : Mathf.Infinity;
+        UpdateAggro();
 
-        // выбор состояния
-        if (distToPlayer <= attackRange)
-            _state = State.Attack;
-        else if (distToPlayer <= chaseRange)
-            _state = State.Chase;
+        if (_isAggroed)
+            ChaseAndAttack();
         else
-            _state = State.Patrol;
+            Patrol();
+    }
 
-        switch (_state)
+    // check if should aggro or deaggro
+    private void UpdateAggro()
+    {
+        if (_player == null) return;
+
+        float dist = Vector3.Distance(transform.position, _player.position);
+
+        if (!_isAggroed && CanSeePlayer(dist))
         {
-            case State.Patrol: DoPatrol(); break;
-            case State.Chase:  DoChase();  break;
-            case State.Attack: DoAttack(); break;
+            _isAggroed = true;
+        }
+
+        // only deaggro if player runs far enough away
+        if (_isAggroed && dist > loseAggroRange)
+        {
+            _isAggroed = false;
         }
     }
 
-    // ── doings ────
+    private bool CanSeePlayer(float dist)
+    {
+        // behind — only if very close
+        if (dist <= backViewRange)
+            return true;
 
-    private void DoPatrol()
+        // front cone check
+        Vector3 toPlayer = (_player.position - transform.position); // looking angle
+        toPlayer.y = 0f;
+        float angle = Vector3.Angle(transform.forward, toPlayer);
+
+        if (angle <= frontViewAngle && dist <= frontViewRange)
+            return true;
+
+        return false;
+    }
+
+    private void Patrol()
     {
         if (waypoints == null || waypoints.Length == 0) return;
 
@@ -102,24 +96,34 @@ public class Enemy : MonoBehaviour
         MoveTowards(target.position);
 
         if (Vector3.Distance(transform.position, target.position) < waypointRadius)
-            _waypointIndex = (_waypointIndex + 1) % waypoints.Length;
+            _waypointIndex = (_waypointIndex + 1) % waypoints.Length; // 3 % 3 = 0 when 0 he coming back
     }
 
-    private void DoChase()
+    private void ChaseAndAttack()
     {
-        if (player) MoveTowards(player.position);
+        if (_player == null) return;
+
+        float dist = Vector3.Distance(transform.position, _player.position);
+
+        if (dist <= attackRange)
+            TryAttack();
+        else
+            MoveTowards(_player.position);
     }
 
-    private void DoAttack()
+    private void TryAttack()
     {
         if (_attackTimer > 0f) return;
-        DealDamage(playerHealth);
+
         _attackTimer = attackCooldown;
+
+        // TODO: deal damage to player here when hp system is ready
+        Debug.Log("Enemy attacked player");
     }
 
     private void MoveTowards(Vector3 target)
     {
-        Vector3 dir = (target - transform.position);
+        Vector3 dir = target - transform.position;
         dir.y = 0f;
         if (dir.sqrMagnitude < 0.01f) return;
 
@@ -127,63 +131,26 @@ public class Enemy : MonoBehaviour
         transform.rotation  = Quaternion.LookRotation(dir.normalized);
     }
 
-    // ── public api ──
-
-    public void TakeHit(int damage, PlayerHealthSystem p, Vector3 hitDirection)
+    // call this from your attack hitbox when player hits enemy
+    public void TakeHit(int damage)
     {
-        if (!IsAlive || IsInvincible) return;
+        if (!_isAlive) return;
 
-        CurrentHp = Mathf.Max(0, CurrentHp - damage);
-        onHit?.Invoke(CurrentHp, maxHp);
-        p?.AddFlaskCharge(chargesPerHit);
+        _currentHp -= damage;
 
-        if (rb) StartCoroutine(Knockback(hitDirection));
-        OnHit();
+        // TODO: play hit animation / sound here
 
-        if (CurrentHp <= 0) HandleDeath();
-        else                StartCoroutine(IFrames());
+        if (_currentHp <= 0)
+            Die();
     }
 
-    public void DealDamage(PlayerHealthSystem p)
+    private void Die()
     {
-        if (!IsAlive) return;
-        p?.TakeDamage(damageToPlayer);
-    }
+        _isAlive = false;
 
-    // ── override in subclasses ──────
+        // TODO: play death animation, drop loot, etc
+        Debug.Log("Enemy died");
 
-    protected virtual void OnHit()   { }
-    protected virtual void OnDeath() { }
-
-    // ── internal ───
-    private void HandleDeath()
-    {
-        IsAlive = false;
-        if (col) col.enabled = false;
-        onDeath?.Invoke();
-        OnDeath();
         Destroy(gameObject, 1f);
-    }
-
-    private IEnumerator IFrames()
-    {
-        IsInvincible = true;
-        yield return new WaitForSeconds(iFramesDuration);
-        IsInvincible = false;
-    }
-
-    private IEnumerator Knockback(Vector3 direction)
-    {
-        float elapsed = 0f;
-        direction.y   = 0f;
-        direction     = direction.normalized;
-
-        while (elapsed < knockbackDuration)
-        {
-            rb.linearVelocity = direction * (knockbackForce * (1f - elapsed / knockbackDuration));
-            elapsed          += Time.deltaTime;
-            yield return null;
-        }
-        rb.linearVelocity = Vector3.zero;
     }
 }
