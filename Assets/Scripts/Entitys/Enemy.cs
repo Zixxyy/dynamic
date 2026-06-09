@@ -4,7 +4,7 @@ using UnityEngine;
 public class Enemy : MonoBehaviour
 {
     [Header("Health")]
-    [SerializeField] private int maxHp = 3;
+    [SerializeField] private int maxHp = 10;
 
     [Header("Patrol")]
     [SerializeField] private Transform[] waypoints;
@@ -141,10 +141,10 @@ public class Enemy : MonoBehaviour
         // TODO: play hit animation / sound here
 
         if (_currentHp <= 0)
-            Die();
+            Killed();
     }
 
-    private void Die()
+    private void Killed()
     {
         _isAlive = false;
 
