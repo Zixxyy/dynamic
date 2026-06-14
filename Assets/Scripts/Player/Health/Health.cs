@@ -5,8 +5,9 @@ public class Health : MonoBehaviour
 {
     [Header("Health")]
     [SerializeField] private int maxHealth = 3;
-    [SerializeField] private int currentHP;
+    [SerializeField] public int currentHP;
     [SerializeField] private Animator healthUI;
+
 
     [Header("FadeIn")]
     [SerializeField] private CanvasGroup blackScreenGroup;
@@ -43,17 +44,26 @@ public class Health : MonoBehaviour
         {
             Die();
         }
+        
     }
     public void Heal()
     {
-        // тут должна быть система хилки я хотел сделать 5 пипов на экране что когда игрок бьет врага 5 раз то может захилится у меня еще нет ударов так что пока что забудем об этом.
+        // not done health system. Have to make 5 pips per player punches, when 5 pips is fully loaded you can heal
+        currentHP++;
+        if(currentHP > 1)
+        {   
+            healthUI.SetTrigger("Heal");
+        } else
+        {
+            Debug.Log("cantHeal");
+        }
     }
     void Die()
     {
         
         if (currentHP <= 0)
         {
-            AudioListener.volume = 0f; 
+            AudioListener.volume = 0f; // not done i have to make a death sound and <---- here its impossible now
             Time.timeScale = 0f;
             blackScreenGroup.alpha = 1f;
             int currentSceneIndex = SceneManager.GetActiveScene().buildIndex;
