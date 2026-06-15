@@ -49,9 +49,9 @@ public class Health : MonoBehaviour
     public void Heal()
     {
         // not done health system. Have to make 5 pips per player punches, when 5 pips is fully loaded you can heal
-        currentHP++;
         if(currentHP > 1)
         {   
+            currentHP++;
             healthUI.SetTrigger("Heal");
         } else
         {
